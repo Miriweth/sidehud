@@ -101,8 +101,9 @@ SMAPI mod in [games/stardew](games/stardew/README.md) sends the map, the people
 around you and the day's numbers. `python examples/stardew_fake.py` shows the
 panel without the game.
 
-sidehud only draws what a game or mod hands over. It does not read game memory,
-and nothing here is meant for online games.
+sidehud only draws what a sender hands over: a mod, a script on a telemetry
+feed, or a tool that reads the game's memory. Nothing here is meant for online
+games.
 
 ## Configuration
 
