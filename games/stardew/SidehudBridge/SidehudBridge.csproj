@@ -4,6 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <EnableModZip>false</EnableModZip>
+    <EnableHarmony>true</EnableHarmony>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <!-- GamePath comes from the environment (build.sh) or -p:GamePath=... -->
   </PropertyGroup>

@@ -79,9 +79,17 @@ competitive online play. `docs/plugin-spec.md` has the details.
 - Stardew Valley runs through Proton here, so the mod is a Windows .NET
   process under Wine. The mod maps `/` paths to `Z:` and finds the home folder
   through `WINEHOMEDIR` (`Expand` and `Home` in `ModEntry.cs`).
-- `Game1.takeMapScreenshot` returns before the PNG is on disk and the game
-  keeps the file locked for a while. The mod waits until the file ends with its
-  `IEND` chunk before it copies it.
+- `Game1.takeMapScreenshot` writes the PNG through a `FileStream` opened with
+  `OpenOrCreate` that it never closes. The file is complete and unlocked only
+  after the GC finalized that stream, and a reused file name keeps stale bytes
+  behind a shorter image. The mod uses a new name for every export and waits
+  for the `IEND` chunk before it copies the file.
+- The map screenshot draws the current frame with every character in it. The
+  mod hides them with a Harmony postfix on `shouldHideCharacters` while its
+  own export runs; `BusStop` and `Desert` override that method and are patched
+  as well.
+- Location names repeat across saves, so map images live in
+  `maps/stardew/<save folder>/`.
 - SMAPI loads mods only at game start. After `build.sh` the game has to be
   restarted.
 - MangoHud reads its config at game start. FPS need `autostart_log=1`,

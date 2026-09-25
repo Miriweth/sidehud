@@ -10,4 +10,5 @@ public class ModConfig
     public bool SendNpcs { get; set; } = true;
     public bool SendMonsters { get; set; } = true;
     public bool ExportMaps { get; set; } = true;
+    public string MapRefresh { get; set; } = "daily";
 }

@@ -24,6 +24,8 @@ does not list, pass the folder:
 ./build.sh "/path/to/Stardew Valley"
 ```
 
+SMAPI loads mods when the game starts, so restart the game after a build.
+
 Without an SDK on the gaming box, build elsewhere and copy the folder
 (`manifest.json` and `SidehudBridge.dll`) into `Mods/SidehudBridge` by hand.
 The Windows build of the game running under Proton works too, the mod resolves
@@ -39,15 +41,19 @@ The Windows build of the game running under Proton works too, the mod resolves
 - `MapScale`: 0.25, size of the exported map images, 16 px per tile
 - `SendNpcs`, `SendMonsters`: villagers and monsters as markers
 - `ExportMaps`: false leaves the tile on the grid
+- `MapRefresh`: `daily` renders a location again on its first visit each in-game day, `once` only when the image is missing, `always` on every visit
 
 ## Maps
 
-The first time you enter a location the mod takes the game's own map
-screenshot, the same as the `/mapscreenshot` chat command, at `MapScale` and
-moves it from the game's Screenshots folder to `MapsDir/<location>.png`. The
-game stalls for a moment while it renders. The packet carries the image path,
-so there is no `.toml` to write. Delete a png and it is exported again on the
-next visit, for example after the farm layout changed.
+When you enter a location the mod renders it with the game's own map
+screenshot, the same as the `/mapscreenshot` chat command, at `MapScale`. The
+game draws the picture itself, so map mods, buildings and the season are in
+it. Farmers, villagers and monsters are left out, the markers show them. The
+image goes to `MapsDir/<save>/<location>.png`, one folder per save. With the
+default `MapRefresh` each location is rendered again on its first visit of the
+day, so a new building shows up the next day at the latest. The game stalls for
+a moment while it renders. The packet carries the image path, so there is no
+`.toml` to write.
 
 The mines, Skull Cavern and the volcano are not exported, their layout changes
 every visit; the tile shows a grid there.

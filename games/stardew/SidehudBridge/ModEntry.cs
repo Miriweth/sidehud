@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -22,16 +23,20 @@ public class ModEntry : Mod
     bool socketFailed;
 
     GameLocation? tracked;
+    string saveId = "";
     string mapId = "";
+    string mapVersion = "";
     double[] mapOrigin = { 0, 0 };
     bool mapReady;
     bool exportPending;
     int exportDelay;
     readonly HashSet<string> failedExports = new();
+    readonly HashSet<string> freshToday = new();
     string? pendingSrc;
-    string pendingId = "";
+    string pendingDst = "";
     int pendingTicks;
     readonly HashSet<string> loggedErrors = new();
+    static bool hideCharacters;
 
     public override void Entry(IModHelper helper)
     {
@@ -47,7 +52,22 @@ public class ModEntry : Mod
         }
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.GameLoop.ReturnedToTitle += (_, _) => { tracked = null; exportPending = false; pendingSrc = null; };
+        helper.Events.GameLoop.DayStarted += (_, _) => freshToday.Clear();
+        helper.Events.GameLoop.SaveLoaded += (_, _) => Guard("cleanup", RemoveLeftovers);
         helper.Events.Player.Warped += OnWarped;
+        Guard("harmony", () =>
+        {
+            var harmony = new Harmony(ModManifest.UniqueID);
+            var postfix = new HarmonyMethod(typeof(ModEntry), nameof(HideDuringExport));
+            foreach (Type type in new[] { typeof(GameLocation), typeof(BusStop), typeof(Desert) })
+                harmony.Patch(AccessTools.DeclaredMethod(type, nameof(GameLocation.shouldHideCharacters)), postfix: postfix);
+        });
+    }
+
+    // the map export draws the current frame, farmers and npcs would end up in the image
+    static void HideDuringExport(ref bool __result)
+    {
+        if (hideCharacters) __result = true;
     }
 
     void OnWarped(object? sender, WarpedEventArgs e)
@@ -58,7 +78,7 @@ public class ModEntry : Mod
     void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         if (!Context.IsWorldReady) return;
-        if (exportPending && --exportDelay <= 0 && Context.CanPlayerMove && !Game1.eventUp && ReferenceEquals(Game1.currentLocation, tracked))
+        if (exportPending && pendingSrc == null && --exportDelay <= 0 && Context.CanPlayerMove && !Game1.eventUp && ReferenceEquals(Game1.currentLocation, tracked))
             ExportMap();
         if (pendingSrc != null) FinishExport();
         if (e.IsMultipleOf(interval)) Send();
@@ -67,10 +87,19 @@ public class ModEntry : Mod
     void Track(GameLocation loc)
     {
         tracked = loc;
+        saveId = Regex.Replace(StardewModdingAPI.Constants.SaveFolderName ?? "unsaved", "[^A-Za-z0-9_-]", "_");
         mapId = Regex.Replace(loc.NameOrUniqueName, "[^A-Za-z0-9_-]", "_");
         bool fixedLayout = loc is not (MineShaft or VolcanoDungeon) && !loc.IsTemporary;
-        mapReady = fixedLayout && File.Exists(MapPath(mapId));
-        exportPending = config.ExportMaps && fixedLayout && !mapReady && !failedExports.Contains(mapId);
+        string path = MapPath(mapId);
+        mapReady = fixedLayout && File.Exists(path);
+        mapVersion = mapReady ? File.GetLastWriteTimeUtc(path).Ticks.ToString() : "";
+        bool stale = config.MapRefresh switch
+        {
+            "always" => true,
+            "once" => !mapReady,
+            _ => !mapReady || !freshToday.Contains(path),
+        };
+        exportPending = config.ExportMaps && fixedLayout && stale && !failedExports.Contains(path);
         exportDelay = 30;
         // takeMapScreenshot crops to the map's ScreenshotRegion (left top right bottom, tiles)
         int ox = 0, oy = 0;
@@ -80,62 +109,78 @@ public class ModEntry : Mod
         mapOrigin = new[] { -ox * px, -oy * px };
     }
 
-    string MapPath(string id) => Path.Combine(mapsDir, id + ".png");
+    string MapPath(string id) => Path.Combine(mapsDir, saveId, id + ".png");
 
     void ExportMap()
     {
         exportPending = false;
-        string id = mapId;
+        string dst = MapPath(mapId);
+        bool lit = Game1.drawLighting;
         try
         {
-            // the screenshot is lit like the current frame; drawLighting is only touched in update code
-            bool lit = Game1.drawLighting;
-            Game1.drawLighting = false;
             string? file;
-            try { file = Game1.game1.takeMapScreenshot(config.MapScale, "sidehud_" + id, null); }
-            finally { Game1.drawLighting = lit; }
+            // the screenshot is lit like the current frame; drawLighting is only touched in update code
+            Game1.drawLighting = false;
+            hideCharacters = true;
+            // a new name every time: the game opens the png with OpenOrCreate and never truncates it
+            try { file = Game1.game1.takeMapScreenshot(config.MapScale, $"sidehud_{mapId}_{DateTime.UtcNow.Ticks}", null); }
+            finally { Game1.drawLighting = lit; hideCharacters = false; }
             if (file == null) throw new IOException("game returned no screenshot");
             pendingSrc = Path.Combine(Game1.game1.GetScreenshotFolder(true), file);
-            pendingId = id;
+            pendingDst = dst;
             pendingTicks = 0;
         }
         catch (Exception ex)
         {
-            failedExports.Add(id);
-            Monitor.Log($"map export {id}: {ex.Message}", LogLevel.Trace);
+            failedExports.Add(dst);
+            Monitor.Log($"map export {mapId}: {ex.Message}", LogLevel.Trace);
         }
     }
 
-    // the game keeps writing (and holding) the png for a while after takeMapScreenshot returns
+    // the game never closes the FileStream it writes the png with; the file is complete and
+    // unlocked only after the GC finalized that stream
     void FinishExport()
     {
         if (++pendingTicks % 10 != 0) return;
-        string src = pendingSrc!, id = pendingId;
+        string src = pendingSrc!, dst = pendingDst;
         try
         {
             if (!PngComplete(src))
             {
-                if (pendingTicks > 900) Abandon(id, "png never completed");
+                if (pendingTicks > 900) Abandon(dst, "png never completed");
                 return;
             }
-            Directory.CreateDirectory(mapsDir);
-            File.Copy(src, MapPath(id), true);
+            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            File.Copy(src, dst, true);
             try { File.Delete(src); } catch (Exception) { }
-            if (id == mapId) mapReady = true;
             pendingSrc = null;
-            Monitor.Log($"map exported to {MapPath(id)}", LogLevel.Info);
+            freshToday.Add(dst);
+            if (dst == MapPath(mapId))
+            {
+                mapReady = true;
+                mapVersion = File.GetLastWriteTimeUtc(dst).Ticks.ToString();
+            }
+            Monitor.Log($"map exported to {dst}", LogLevel.Info);
         }
         catch (IOException ex)
         {
-            if (pendingTicks > 900) Abandon(id, ex.Message);
+            if (pendingTicks > 900) Abandon(dst, ex.Message);
         }
     }
 
-    void Abandon(string id, string why)
+    void Abandon(string dst, string why)
     {
         pendingSrc = null;
-        failedExports.Add(id);
-        Monitor.Log($"map export {id}: {why}", LogLevel.Trace);
+        failedExports.Add(dst);
+        Monitor.Log($"map export {Path.GetFileName(dst)}: {why}", LogLevel.Trace);
+    }
+
+    // exports copied while the game still held the file stay behind in its Screenshots folder
+    void RemoveLeftovers()
+    {
+        foreach (string f in Directory.GetFiles(Game1.game1.GetScreenshotFolder(false), "sidehud_*.png"))
+            if (DateTime.UtcNow - File.GetLastWriteTimeUtc(f) > TimeSpan.FromMinutes(1))
+                File.Delete(f);
     }
 
     static bool PngComplete(string path)
@@ -158,7 +203,7 @@ public class ModEntry : Mod
         {
             id = "stardew/" + mapId,
             name = loc.DisplayName,
-            image = mapReady ? "stardew/" + mapId + ".png" : null,
+            image = mapReady ? $"stardew/{saveId}/{mapId}.png?v={mapVersion}" : null,
             origin_px = mapOrigin,
             px_per_unit = new[] { px, px },
         });
