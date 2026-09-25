@@ -21,7 +21,7 @@ class MapState:
         now = time.time()
         entities = msg.get("entities")
         if entities is None and "x" in msg:
-            entities = [{k: msg[k] for k in ("id", "kind", "x", "y", "z", "heading", "label") if k in msg}]
+            entities = [{k: msg[k] for k in ("id", "kind", "x", "y", "z", "heading", "label", "icon") if k in msg}]
         with self._lock:
             if "map" in msg and isinstance(msg["map"], (str, dict, type(None))):
                 self._map = msg["map"]

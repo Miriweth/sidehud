@@ -27,8 +27,11 @@ class MapDefs:
         cached = self._cache.get(map_id)
         if cached and cached[0] == mtime:
             return cached[1]
-        with open(path, "rb") as f:
-            d = tomllib.load(f)
+        try:
+            with open(path, "rb") as f:
+                d = tomllib.load(f)
+        except (OSError, tomllib.TOMLDecodeError):
+            return None
         d["id"] = map_id
         d["image"] = image_url(d.get("image"))
         self._cache[map_id] = (mtime, d)

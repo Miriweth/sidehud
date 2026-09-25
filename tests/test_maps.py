@@ -13,11 +13,12 @@ from sidehud.maps.udp import UdpListener
 class State(unittest.TestCase):
     def test_short_form_and_entities(self):
         s = MapState()
-        s.update({"map": "castle", "x": 1, "y": 2, "heading": 90})
+        s.update({"map": "castle", "x": 1, "y": 2, "heading": 90, "icon": "me.png"})
         snap = s.snapshot()
         self.assertTrue(snap["live"])
         self.assertEqual(snap["map"], "castle")
         self.assertEqual(snap["entities"][0]["id"], "player")
+        self.assertEqual(snap["entities"][0]["icon"], "me.png")
         s.update({"entities": [{"id": "bob", "kind": "ally", "x": 5, "y": 5}, {"id": "bad"}]})
         ids = sorted(e["id"] for e in s.snapshot()["entities"])
         self.assertEqual(ids, ["bob"])
@@ -89,3 +90,5 @@ class Defs(unittest.TestCase):
             self.assertIsNone(defs.get("missing"))
             self.assertIsNone(defs.get("../castle"))
             self.assertIsNone(defs.get(None))
+            (Path(tmp) / "broken.toml").write_text("name = ")
+            self.assertIsNone(defs.get("broken"))

@@ -59,6 +59,13 @@
     },
     "label": {
       "type": "string"
+    },
+    "icon": {
+      "description": "Short form only: picture instead of the dot.",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "dependentRequired": {
