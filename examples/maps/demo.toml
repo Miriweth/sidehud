@@ -1,0 +1,4 @@
+name = "Demo"
+image = "demo.png"
+origin_px = [256, 256]
+px_per_unit = [0.8, -0.8]

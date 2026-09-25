@@ -1,0 +1,16 @@
+# ~/.config/systemd/user/sidehud.service
+# then: systemctl --user enable --now sidehud
+[Unit]
+Description=sidehud
+After=network-online.target
+
+[Service]
+# from a checkout:
+WorkingDirectory=%h/Projects/sidehud
+ExecStart=/usr/bin/python3 -m sidehud serve
+# installed with pipx instead:
+# ExecStart=%h/.local/bin/sidehud serve
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

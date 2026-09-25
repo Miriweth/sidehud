@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sidehud"
+version = "0.1.0"
+description = "Your phone as a second screen for a Linux gaming PC: FPS, temperatures, load and an optional minimap"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = ["psutil>=5.9"]
+authors = [{ name = "miriweth" }]
+keywords = ["gaming", "monitoring", "mangohud", "second-screen", "linux", "proton"]
+classifiers = [
+  "Environment :: Web Environment",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Games/Entertainment",
+  "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/miriweth/sidehud"
+
+[project.scripts]
+sidehud = "sidehud.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sidehud*"]
+
+[tool.setuptools.package-data]
+sidehud = ["static/*"]

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sidehud</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="sidehud">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <span class="brand">sidehud</span><span class="host" id="host"></span>
+  <span class="clock" id="clock">--:--:--</span>
+  <span class="conn" id="conn"></span>
+</header>
+<main>
+  <section class="tile hero" id="hero">
+    <div class="label"><span id="hero-label"></span><span class="sub" id="hero-sub"></span></div>
+    <div class="value"><span id="hero-value">–</span><span class="unit" id="hero-unit">%</span></div>
+    <div class="caption" id="hero-caption"></div>
+    <svg class="spark" id="hero-spark"></svg>
+  </section>
+
+  <section class="tile map hidden" id="map">
+    <div class="label"><span data-i18n="map"></span><span class="sub" id="map-sub"></span></div>
+    <canvas id="map-canvas"></canvas>
+  </section>
+
+  <section class="tile" id="gpu">
+    <div class="label"><span data-i18n="gpu"></span><span class="sub" id="gpu-name"></span></div>
+    <div id="gpu-load-block">
+      <div class="value l-hide"><span id="gpu-load">–</span><span class="unit">%</span></div>
+      <div class="kv l-only"><span class="k" data-i18n="load"></span><span class="v"><span id="gpu-load-l">–</span> %</span></div>
+      <div class="meter" style="--c:var(--gpu)" id="gpu-meter"><div class="fill"></div></div>
+    </div>
+    <div class="kv"><span class="k" data-i18n="temp"></span><span class="v" id="gpu-temp">–</span></div>
+    <div class="kv"><span class="k" data-i18n="power"></span><span class="v" id="gpu-power">–</span></div>
+    <div class="kv l-hide"><span class="k" data-i18n="clock"></span><span class="v" id="gpu-clock">–</span></div>
+    <div class="kv"><span class="k">VRAM</span><span class="v" id="gpu-vram">–</span></div>
+    <div class="meter" style="--c:var(--gpu);margin-top:0" id="vram-meter"><div class="fill"></div></div>
+    <div class="kv l-hide"><span class="k" data-i18n="fan"></span><span class="v" id="gpu-fan">–</span></div>
+  </section>
+
+  <section class="tile" id="cpu">
+    <div class="label"><span data-i18n="cpu"></span><span class="sub" id="cpu-name"></span></div>
+    <div class="value"><span id="cpu-load">–</span><span class="unit">%</span></div>
+    <div class="meter" style="--c:var(--cpu)" id="cpu-meter"><div class="fill"></div></div>
+    <div class="cores" id="cores"></div>
+    <div class="kv" style="margin-top:8px"><span class="k" data-i18n="temp"></span><span class="v" id="cpu-temp">–</span></div>
+    <div class="kv"><span class="k" data-i18n="clock"></span><span class="v" id="cpu-freq">–</span></div>
+    <div class="caption l-hide" id="cpu-caption" style="margin-top:8px"></div>
+    <svg class="spark l-hide" id="cpu-spark"></svg>
+  </section>
+
+  <section class="tile" id="mem">
+    <div class="label"><span data-i18n="memory"></span><span class="sub" id="mem-total"></span></div>
+    <div class="value"><span id="mem-used">–</span><span class="unit">GB</span></div>
+    <div class="meter" style="--c:var(--mem)" id="mem-meter"><div class="fill"></div></div>
+    <div class="caption" id="mem-caption"></div>
+  </section>
+
+  <section class="tile" id="net">
+    <div class="label"><span data-i18n="network"></span><span class="sub">Mbit/s</span></div>
+    <div class="value"><span id="net-down">–</span><span class="unit" data-i18n="down"></span></div>
+    <div class="kv"><span class="k" data-i18n="up"></span><span class="v" id="net-up">–</span></div>
+    <div class="caption" id="net-caption" style="margin-top:8px"></div>
+    <svg class="spark" id="net-spark"></svg>
+  </section>
+
+  <section class="tile procs" id="procs">
+    <div class="label"><span data-i18n="procs"></span><span class="sub l-hide" data-i18n="procsSub"></span></div>
+    <div id="procs-list"></div>
+  </section>
+</main>
+<footer id="hint" class="l-hide" data-i18n="hint"></footer>
+<script src="app.js"></script>
+</body>
+</html>
