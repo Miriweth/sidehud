@@ -43,6 +43,11 @@ The page follows the phone's language (German or English), `?lang=en` forces
 one. Portrait stacks the tiles, landscape fits everything on one screen without
 scrolling. Touch a graph to read a value from the last two minutes.
 
+The menu at the top picks a profile. Auto shows the map and panel of whatever
+game is sending, PC only hides them, and picking a game keeps its panel on
+screen. `?profile=pc` or `?profile=stardew` in the address does the same, so
+each home screen icon can open its own profile.
+
 ## FPS
 
 MangoHud can write a CSV log while a game runs, sidehud tails the newest one.
@@ -51,17 +56,19 @@ MangoHud can write a CSV log while a game runs, sidehud tails the newest one.
 sidehud mangohud-setup
 ```
 
-adds three lines to `~/.config/MangoHud/MangoHud.conf` and keeps a backup:
+sets these lines in `~/.config/MangoHud/MangoHud.conf` and keeps a backup:
 
 ```
 output_folder=~/.local/share/sidehud/mangohud
 autostart_log=1
-log_interval=500
+log_duration=0
 ```
 
-From the next game start the big number at the top switches from GPU load to
-FPS, with the frametime and the game's name underneath. The logs are small but
-they add up, empty the folder now and then.
+`log_interval=500` is added when the file has no interval yet. MangoHud reads
+its config when a game starts, so restart the game once. After that the big
+number at the top switches from GPU load to FPS, with the frametime and the
+game's name underneath. The logs are small but they add up, empty the folder
+now and then.
 
 ## Firewall
 
@@ -77,8 +84,8 @@ page, process names included. Bind to `127.0.0.1` if it should stay on the PC.
 ## Minimap
 
 Anything that can send a UDP packet can put positions on the phone. The packet
-format and how to calibrate a map image are in [docs/minimap.md](docs/minimap.md).
-To see it without a game:
+format, map images and game panels are described in
+[docs/plugin-spec.md](docs/plugin-spec.md). To see it without a game:
 
 ```
 python examples/sender.py
@@ -89,9 +96,10 @@ The map tile appears when data arrives and disappears when it stops.
 ### Games
 
 A packet can also carry a `game` id and a `stats` object; sidehud then loads a
-panel for that game next to the map. Stardew Valley is the first one, see
-[games/README.md](games/README.md) for adding another game.
-`python examples/stardew_fake.py` shows the panel without the game.
+panel for that game next to the map. Stardew Valley is the first one: the
+SMAPI mod in [games/stardew](games/stardew/README.md) sends the map, the people
+around you and the day's numbers. `python examples/stardew_fake.py` shows the
+panel without the game.
 
 sidehud only draws what a game or mod hands over. It does not read game memory,
 and nothing here is meant for online games.
@@ -130,6 +138,9 @@ systemctl --user enable --now sidehud
 ```
 python -m unittest discover -s tests
 ```
+
+[AGENTS.md](AGENTS.md) describes the layout and conventions,
+[docs/plugin-spec.md](docs/plugin-spec.md) what a new game has to send.
 
 ## Similar projects
 

@@ -72,20 +72,30 @@ class MangoHudLog:
 
 
 def setup(output_dir, conf=CONF):
-    """Add the logging lines to MangoHud.conf. Returns the lines that were added."""
+    """Make MangoHud log where sidehud reads, for as long as the game runs. Returns the lines set."""
     conf = Path(conf).expanduser()
-    wanted = {"output_folder": str(output_dir), "autostart_log": "1", "log_interval": "500"}
     lines = conf.read_text().splitlines() if conf.exists() else []
-    present = {l.split("=", 1)[0].strip() for l in lines if "=" in l and not l.lstrip().startswith("#")}
-    missing = [f"{k}={v}" for k, v in wanted.items() if k not in present]
-    if not missing:
+    at = {}
+    for i, line in enumerate(lines):
+        key, sep, _ = line.partition("=")
+        if sep and not key.lstrip().startswith("#"):
+            at[key.strip()] = i
+    must = {"output_folder": str(output_dir), "autostart_log": "1"}
+    done = []
+    for key, value in {**must, "log_duration": "0"}.items():
+        if key in at and lines[at[key]].partition("=")[2].strip() != value:
+            lines[at[key]] = f"{key}={value}"
+            done.append(lines[at[key]])
+    add = [f"{k}={v}" for k, v in {**must, "log_interval": "500"}.items() if k not in at]
+    if not done and not add:
         return []
     if conf.exists():
         shutil.copy(conf, conf.with_suffix(".conf.bak"))
     conf.parent.mkdir(parents=True, exist_ok=True)
-    with open(conf, "a") as f:
-        f.write("\n# sidehud: fps log for the phone\n" + "\n".join(missing) + "\n")
-    return missing
+    if add:
+        lines += ["", "# sidehud: fps log for the phone"] + add
+    conf.write_text("\n".join(lines) + "\n")
+    return done + add
 
 
 def current_output_folder(conf=CONF):

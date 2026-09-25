@@ -309,7 +309,7 @@
   map.canvas.addEventListener('click', () => { map.mode = (map.mode + 1) % MODES.length; if (map.last) drawMap(map.last); });
 
   // ---- game panels ------------------------------------------------------
-  // games/<id>.js exports { title, render(stats, root, ctx) }, see games/README.md
+  // games/<id>.js exports { title, render(stats, root, ctx) }, see docs/plugin-spec.md
   const games = {};
   const GAME_CTX = { t, f0, f1, locale, lang: LANG };
 
@@ -335,10 +335,12 @@
     return true;
   }
 
-  // profile: auto = whatever sends data, pc = never show game tiles, <game> = pin that panel
+  // profile: auto = whatever sends data, pc = never show game tiles, <game> = pin that panel.
+  // ?profile=<id> wins over the stored choice, so each home screen icon can open its own profile
   const PROFILE_KEY = 'sidehud.profile';
-  let profile = 'auto', mapData = null;
-  try { profile = localStorage.getItem(PROFILE_KEY) || 'auto'; } catch (e) { /* private mode */ }
+  let profile = new URLSearchParams(location.search).get('profile'), mapData = null;
+  try { profile ||= localStorage.getItem(PROFILE_KEY); } catch (e) { /* private mode */ }
+  profile ||= 'auto';
 
   async function applyMap(data) {
     const live = data.live && profile !== 'pc';
@@ -373,7 +375,7 @@
       const mod = await gameModule(id);
       if (mod) add(id, mod.title || id);
     }
-    sel.value = [...sel.options].some(o => o.value === profile) ? profile : 'auto';
+    profile = sel.value = [...sel.options].some(o => o.value === profile) ? profile : 'auto';
     sel.addEventListener('change', () => {
       profile = sel.value;
       try { localStorage.setItem(PROFILE_KEY, profile); } catch (e) { /* private mode */ }

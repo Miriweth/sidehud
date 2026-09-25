@@ -85,6 +85,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
     grid-template-columns:1.5fr 1fr 1fr;
     grid-template-areas:"map game hero" "map game gpu";
   }
+  body.has-game:not(.has-map) main{grid-template-columns:1fr 1fr;grid-template-areas:"game hero" "game gpu"}
   body.has-game #cpu,body.has-game #mem{display:none}
   .tile{padding:8px 12px 8px;border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
   .tile.hero{grid-area:hero}

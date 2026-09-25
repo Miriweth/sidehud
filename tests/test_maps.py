@@ -20,7 +20,9 @@ class State(unittest.TestCase):
         self.assertEqual(snap["entities"][0]["id"], "player")
         s.update({"entities": [{"id": "bob", "kind": "ally", "x": 5, "y": 5}, {"id": "bad"}]})
         ids = sorted(e["id"] for e in s.snapshot()["entities"])
-        self.assertEqual(ids, ["bob", "player"])
+        self.assertEqual(ids, ["bob"])
+        s.update({"stats": {"money": 1}})
+        self.assertEqual(len(s.snapshot()["entities"]), 1)
 
     def test_game_and_stats(self):
         s = MapState()

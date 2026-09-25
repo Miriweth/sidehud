@@ -48,6 +48,17 @@ class MangoHudSetup(unittest.TestCase):
             self.assertEqual(mangohud.current_output_folder(conf), "/tmp/logs")
             self.assertIn("fps_limit=144", conf.read_text())
 
+    def test_fixes_existing_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "MangoHud.conf"
+            conf.write_text("autostart_log=0\nlog_duration=30\noutput_folder=/elsewhere\n# autostart_log=0\n")
+            changed = mangohud.setup("/tmp/logs", conf)
+            self.assertEqual(changed, ["output_folder=/tmp/logs", "autostart_log=1", "log_duration=0", "log_interval=500"])
+            text = conf.read_text()
+            self.assertNotIn("\nautostart_log=0", "\n" + text)
+            self.assertIn("# autostart_log=0", text)
+            self.assertEqual(mangohud.setup("/tmp/logs", conf), [])
+
     def test_creates_conf(self):
         with tempfile.TemporaryDirectory() as tmp:
             conf = Path(tmp) / "sub" / "MangoHud.conf"

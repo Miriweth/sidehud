@@ -46,16 +46,12 @@ def main(argv=None):
     elif cmd == "mangohud-setup":
         from .sensors import mangohud
         conf = args.conf or mangohud.CONF
-        added = mangohud.setup(cfg["mangohud_dir"], conf)
-        if added:
-            print(f"added to {conf}:\n  " + "\n  ".join(added))
-            print("MangoHud logs from the next game start on. sidehud picks the fps up automatically.")
+        changed = mangohud.setup(cfg["mangohud_dir"], conf)
+        if changed:
+            print(f"{conf}:\n  " + "\n  ".join(changed))
+            print("MangoHud reads this at game start, so restart the game once.")
         else:
-            print(f"{conf} already has logging configured, nothing changed.")
-            folder = mangohud.current_output_folder(conf)
-            if folder and Path(folder).expanduser() != Path(cfg["mangohud_dir"]).expanduser():
-                print(f"note: MangoHud logs to {folder}, sidehud reads {cfg['mangohud_dir']}. "
-                      f"Set mangohud_dir in config.toml or start with --mangohud-dir.")
+            print(f"{conf} already logs to {cfg['mangohud_dir']}, nothing changed.")
     elif cmd == "check":
         check(cfg)
 

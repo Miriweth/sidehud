@@ -4,7 +4,7 @@ import threading
 
 
 class UdpListener(threading.Thread):
-    """One JSON object per datagram, see docs/minimap.md. Binds localhost only."""
+    """One JSON object per datagram, see docs/plugin-spec.md. Binds localhost only."""
 
     def __init__(self, state, port, host="127.0.0.1"):
         super().__init__(daemon=True)

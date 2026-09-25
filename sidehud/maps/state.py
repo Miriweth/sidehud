@@ -3,7 +3,7 @@ import time
 
 
 class MapState:
-    """Latest positions as sent by whatever feeds the UDP port. Entities expire on their own."""
+    """Latest packet from whatever feeds the UDP port, see docs/plugin-spec.md."""
 
     def __init__(self, ttl=3.0):
         self._lock = threading.Lock()
@@ -29,6 +29,8 @@ class MapState:
             self._game = game if isinstance(game, str) else None
             stats = msg.get("stats")
             self._stats = stats if isinstance(stats, dict) else None
+            if entities is not None:
+                self._entities = {}  # every packet carries the full list; markers from the last location must go
             for e in entities or []:
                 if not isinstance(e, dict) or "x" not in e or "y" not in e:
                     continue
