@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sidehud"
-version = "0.2.0"
+version = "0.3.0"
 description = "Your phone as a second screen for a Linux gaming PC: FPS, temperatures, load and an optional minimap"
 readme = "README.md"
 license = { text = "MIT" }
