@@ -97,6 +97,7 @@ A single player without panel can use the short form instead of `entities`:
 | `kind` | `player`, `ally` or `other` | Drawn white, green or yellow. Anything else is drawn as `other`. Defaults to `player`. |
 | `heading` | number | Degrees clockwise, 0 points up the screen. Drawn as a short tick on the marker. |
 | `label` | string | Drawn next to the marker. Keep it short. |
+| `icon` | string | A picture drawn instead of the dot, inside a ring in the colour of `kind`. Same path rules as a map image. Small pictures work best; the page scales them to about 24 px and keeps pixel art sharp. |
 
 `player` is the local player and the marker the tile can follow. Use `ally` for
 co-op partners, companions and friendly characters, `other` for the rest. Keep
@@ -144,7 +145,12 @@ The maps folder is `~/.config/sidehud/maps` (`maps_dir` in the config). Put a
 game's images under `<maps folder>/<game>/`, subfolders are fine. sidehud serves
 them at `/maps/<path>`, paths outside the folder are refused. PNG and JPEG
 work, any size; the phone scales them. A sender may write images there while
-the game runs: the Stardew mod exports each location from the game itself.
+the game runs: the Stardew mod draws each location from the game itself.
+
+When a picture changes, give it a new path, for example `farm.png?v=2`. The
+page loads the new one in the background and keeps the old one on screen until
+it is there. Write the file under a temporary name and rename it when it is
+complete, so sidehud never serves half an image.
 
 ## Panel module
 

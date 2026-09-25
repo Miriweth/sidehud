@@ -9,6 +9,9 @@
     <!-- GamePath comes from the environment (build.sh) or -p:GamePath=... -->
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="SkiaSharp" HintPath="$(GamePath)/SkiaSharp.dll" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
   </ItemGroup>
 </Project>

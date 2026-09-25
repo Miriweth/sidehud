@@ -1,10 +1,16 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using SkiaSharp;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -16,27 +22,35 @@ namespace SidehudBridge;
 
 public class ModEntry : Mod
 {
+    const int Chunk = 2048;  // world pixels per draw, the size the game's own map screenshot uses
+
     ModConfig config = null!;
     UdpClient udp = null!;
     string mapsDir = "";
     uint interval;
     bool socketFailed;
+    readonly HashSet<string> loggedErrors = new();
 
     GameLocation? tracked;
     string saveId = "";
     string mapId = "";
+    string mapFile = "";
     string mapVersion = "";
     double[] mapOrigin = { 0, 0 };
     bool mapReady;
-    bool exportPending;
-    int exportDelay;
-    readonly HashSet<string> failedExports = new();
-    readonly HashSet<string> freshToday = new();
-    string? pendingSrc;
-    string pendingDst = "";
-    int pendingTicks;
-    readonly HashSet<string> loggedErrors = new();
+
+    RenderTarget2D? mapTarget, chunkTarget, chunkLightmap;
+    Color[]? pixels;
+    int chunk = -1, cols, rows, startX, startY, renderDelay;
+    double nextRender;
+    Task? saveTask;
+    string saveDst = "";
+    bool renderBroken;
     static bool hideCharacters;
+
+    readonly Dictionary<string, string?> icons = new();
+    readonly ConcurrentQueue<string> iconsDone = new();
+    readonly long session = DateTime.UtcNow.Ticks;
 
     public override void Entry(IModHelper helper)
     {
@@ -51,145 +65,267 @@ public class ModEntry : Mod
             udp.Connect("127.0.0.1", 8766);
         }
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
-        helper.Events.GameLoop.ReturnedToTitle += (_, _) => { tracked = null; exportPending = false; pendingSrc = null; };
-        helper.Events.GameLoop.DayStarted += (_, _) => freshToday.Clear();
+        helper.Events.GameLoop.ReturnedToTitle += (_, _) => Reset();
         helper.Events.GameLoop.SaveLoaded += (_, _) => Guard("cleanup", RemoveLeftovers);
-        helper.Events.Player.Warped += OnWarped;
+        helper.Events.Player.Warped += (_, e) => { if (e.IsLocalPlayer) Track(e.NewLocation); };
         Guard("harmony", () =>
         {
             var harmony = new Harmony(ModManifest.UniqueID);
-            var postfix = new HarmonyMethod(typeof(ModEntry), nameof(HideDuringExport));
+            var postfix = new HarmonyMethod(typeof(ModEntry), nameof(HideWhileRendering));
             foreach (Type type in new[] { typeof(GameLocation), typeof(BusStop), typeof(Desert) })
                 harmony.Patch(AccessTools.DeclaredMethod(type, nameof(GameLocation.shouldHideCharacters)), postfix: postfix);
         });
     }
 
-    // the map export draws the current frame, farmers and npcs would end up in the image
-    static void HideDuringExport(ref bool __result)
+    // the map is drawn from the running world; farmers and npcs are markers, not part of the picture
+    static void HideWhileRendering(ref bool __result)
     {
         if (hideCharacters) __result = true;
     }
 
-    void OnWarped(object? sender, WarpedEventArgs e)
+    void Reset()
     {
-        if (e.IsLocalPlayer) Track(e.NewLocation);
+        tracked = null;
+        chunk = -1;
+        saveTask = null;
+        pixels = null;
+        mapTarget?.Dispose();
+        chunkTarget?.Dispose();
+        chunkLightmap?.Dispose();
+        mapTarget = chunkTarget = chunkLightmap = null;
     }
 
     void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
         if (!Context.IsWorldReady) return;
-        if (exportPending && pendingSrc == null && --exportDelay <= 0 && Context.CanPlayerMove && !Game1.eventUp && ReferenceEquals(Game1.currentLocation, tracked))
-            ExportMap();
-        if (pendingSrc != null) FinishExport();
+        while (iconsDone.TryDequeue(out string? key)) icons[key] = $"stardew/icons/{key}.png?v={session}";
+        if (saveTask is { IsCompleted: true }) FinishSave();
+        if (config.ExportMaps && !renderBroken)
+        {
+            try { RenderStep(); }
+            catch (Exception ex)
+            {
+                renderBroken = true;
+                chunk = -1;
+                try { Game1.spriteBatch.End(); } catch (Exception) { }
+                Monitor.Log($"live map stopped: {ex}", LogLevel.Warn);
+            }
+        }
         if (e.IsMultipleOf(interval)) Send();
     }
 
     void Track(GameLocation loc)
     {
         tracked = loc;
-        saveId = Regex.Replace(StardewModdingAPI.Constants.SaveFolderName ?? "unsaved", "[^A-Za-z0-9_-]", "_");
-        mapId = Regex.Replace(loc.NameOrUniqueName, "[^A-Za-z0-9_-]", "_");
+        saveId = Clean(StardewModdingAPI.Constants.SaveFolderName ?? "unsaved");
+        mapId = Clean(loc.NameOrUniqueName);
         bool fixedLayout = loc is not (MineShaft or VolcanoDungeon) && !loc.IsTemporary;
-        string path = MapPath(mapId);
+        // mine levels share one file, a level looks different on every visit anyway
+        mapFile = fixedLayout ? mapId : "_level";
+        string path = MapPath();
         mapReady = fixedLayout && File.Exists(path);
         mapVersion = mapReady ? File.GetLastWriteTimeUtc(path).Ticks.ToString() : "";
-        bool stale = config.MapRefresh switch
-        {
-            "always" => true,
-            "once" => !mapReady,
-            _ => !mapReady || !freshToday.Contains(path),
-        };
-        exportPending = config.ExportMaps && fixedLayout && stale && !failedExports.Contains(path);
-        exportDelay = 30;
-        // takeMapScreenshot crops to the map's ScreenshotRegion (left top right bottom, tiles)
-        int ox = 0, oy = 0;
-        string[] r = loc.GetMapPropertySplitBySpaces("ScreenshotRegion");
-        if (r.Length >= 4 && int.TryParse(r[0], out int l) && int.TryParse(r[1], out int t) && int.TryParse(r[2], out _) && int.TryParse(r[3], out _)) { ox = l; oy = t; }
+        chunk = -1;
+        renderDelay = 30;
+        nextRender = 0;
+        Region(loc, out startX, out startY, out _, out _);
         double px = Math.Round(64 * config.MapScale, 2);
-        mapOrigin = new[] { -ox * px, -oy * px };
+        mapOrigin = new[] { -startX / 64.0 * px, -startY / 64.0 * px };
     }
 
-    string MapPath(string id) => Path.Combine(mapsDir, saveId, id + ".png");
+    static string Clean(string s) => Regex.Replace(s, "[^A-Za-z0-9_-]", "_");
 
-    void ExportMap()
+    string MapPath() => Path.Combine(mapsDir, saveId, mapFile + ".png");
+
+    // the part of the map the game's own screenshot covers: all of it, or its ScreenshotRegion (tiles)
+    static void Region(GameLocation loc, out int x, out int y, out int w, out int h)
     {
-        exportPending = false;
-        string dst = MapPath(mapId);
-        bool lit = Game1.drawLighting;
-        try
+        x = 0;
+        y = 0;
+        w = loc.map.DisplayWidth;
+        h = loc.map.DisplayHeight;
+        string[] r = loc.GetMapPropertySplitBySpaces("ScreenshotRegion");
+        if (r.Length >= 4 && int.TryParse(r[0], out int left) && int.TryParse(r[1], out int top) && int.TryParse(r[2], out int right) && int.TryParse(r[3], out int bottom))
         {
-            string? file;
-            // the screenshot is lit like the current frame; drawLighting is only touched in update code
-            Game1.drawLighting = false;
-            hideCharacters = true;
-            // a new name every time: the game opens the png with OpenOrCreate and never truncates it
-            try { file = Game1.game1.takeMapScreenshot(config.MapScale, $"sidehud_{mapId}_{DateTime.UtcNow.Ticks}", null); }
-            finally { Game1.drawLighting = lit; hideCharacters = false; }
-            if (file == null) throw new IOException("game returned no screenshot");
-            pendingSrc = Path.Combine(Game1.game1.GetScreenshotFolder(true), file);
-            pendingDst = dst;
-            pendingTicks = 0;
-        }
-        catch (Exception ex)
-        {
-            failedExports.Add(dst);
-            Monitor.Log($"map export {mapId}: {ex.Message}", LogLevel.Trace);
+            x = left * 64;
+            y = top * 64;
+            w = (right + 1) * 64 - x;
+            h = (bottom + 1) * 64 - y;
         }
     }
 
-    // the game never closes the FileStream it writes the png with; the file is complete and
-    // unlocked only after the GC finalized that stream
-    void FinishExport()
+    void RenderStep()
     {
-        if (++pendingTicks % 10 != 0) return;
-        string src = pendingSrc!, dst = pendingDst;
-        try
+        var loc = Game1.currentLocation;
+        if (loc == null || !ReferenceEquals(loc, tracked) || !Context.IsPlayerFree || Game1.game1.takingMapScreenshot)
         {
-            if (!PngComplete(src))
+            chunk = -1;
+            return;
+        }
+        if (chunk < 0)
+        {
+            if (renderDelay > 0)
             {
-                if (pendingTicks > 900) Abandon(dst, "png never completed");
+                renderDelay--;
                 return;
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-            File.Copy(src, dst, true);
-            try { File.Delete(src); } catch (Exception) { }
-            pendingSrc = null;
-            freshToday.Add(dst);
-            if (dst == MapPath(mapId))
-            {
-                mapReady = true;
-                mapVersion = File.GetLastWriteTimeUtc(dst).Ticks.ToString();
-            }
-            Monitor.Log($"map exported to {dst}", LogLevel.Info);
+            if (saveTask != null || Game1.currentGameTime.TotalGameTime.TotalSeconds < nextRender) return;
+            StartPass(loc);
         }
-        catch (IOException ex)
-        {
-            if (pendingTicks > 900) Abandon(dst, ex.Message);
-        }
+        DrawChunk();
     }
 
-    void Abandon(string dst, string why)
+    void StartPass(GameLocation loc)
     {
-        pendingSrc = null;
-        failedExports.Add(dst);
-        Monitor.Log($"map export {Path.GetFileName(dst)}: {why}", LogLevel.Trace);
+        Region(loc, out startX, out startY, out int w, out int h);
+        int pw = (int)(w * config.MapScale), ph = (int)(h * config.MapScale);
+        var device = Game1.graphics.GraphicsDevice;
+        if (mapTarget == null || mapTarget.Width != pw || mapTarget.Height != ph)
+        {
+            mapTarget?.Dispose();
+            mapTarget = new RenderTarget2D(device, pw, ph, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+        }
+        chunkTarget ??= new RenderTarget2D(device, Chunk, Chunk, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+        cols = (w + Chunk - 1) / Chunk;
+        rows = (h + Chunk - 1) / Chunk;
+        chunk = 0;
     }
 
-    // exports copied while the game still held the file stay behind in its Screenshots folder
+    // one piece of the map per tick; the same steps Game1.takeMapScreenshot runs in one go
+    void DrawChunk()
+    {
+        int col = chunk % cols, row = chunk / cols;
+        float scale = config.MapScale;
+        var device = Game1.graphics.GraphicsDevice;
+        var lightmap = Helper.Reflection.GetField<RenderTarget2D>(typeof(Game1), "_lightmap");
+        var gameLightmap = lightmap.GetValue();
+        var viewport = Game1.viewport;
+        bool hud = Game1.displayHUD, lit = Game1.drawLighting;
+        float zoom = Game1.options.baseZoomLevel;
+        bool begun = false;
+        try
+        {
+            Game1.game1.takingMapScreenshot = true;
+            Game1.options.baseZoomLevel = 1f;
+            Game1.drawLighting = false;
+            hideCharacters = true;
+            lightmap.SetValue(chunkLightmap!);  // null on the first chunk, allocateLightmap then creates one
+            Helper.Reflection.GetMethod(typeof(Game1), "allocateLightmap").Invoke(Chunk, Chunk);
+            chunkLightmap = lightmap.GetValue();
+            Game1.viewport = new xTile.Dimensions.Rectangle(col * Chunk + startX, row * Chunk + startY, Chunk, Chunk);
+            Helper.Reflection.GetMethod(Game1.game1, "_draw").Invoke(Game1.currentGameTime, chunkTarget);
+            device.SetRenderTarget(mapTarget);
+            Game1.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            begun = true;
+            Game1.spriteBatch.Draw(chunkTarget, new Vector2(col * Chunk * scale, row * Chunk * scale), null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 1f);
+        }
+        finally
+        {
+            if (begun) Game1.spriteBatch.End();
+            device.SetRenderTarget(null);
+            lightmap.SetValue(gameLightmap);
+            Game1.options.baseZoomLevel = zoom;
+            Game1.game1.takingMapScreenshot = false;
+            Game1.displayHUD = hud;
+            Game1.drawLighting = lit;
+            Game1.viewport = viewport;
+            hideCharacters = false;
+        }
+        if (++chunk < cols * rows) return;
+        chunk = -1;
+        nextRender = config.MapRefreshSeconds > 0 ? Game1.currentGameTime.TotalGameTime.TotalSeconds + config.MapRefreshSeconds : double.MaxValue;
+        SaveMap();
+    }
+
+    void SaveMap()
+    {
+        var target = mapTarget!;
+        if (pixels == null || pixels.Length != target.Width * target.Height) pixels = new Color[target.Width * target.Height];
+        target.GetData(pixels);
+        Color[] px = pixels;
+        int w = target.Width, h = target.Height;
+        string dst = saveDst = MapPath();
+        saveTask = Task.Run(() => WritePng(dst, px, w, h, SKAlphaType.Opaque));
+    }
+
+    void FinishSave()
+    {
+        if (saveTask!.IsFaulted)
+        {
+            if (loggedErrors.Add("save map")) Monitor.Log($"save map: {saveTask.Exception?.InnerException}", LogLevel.Trace);
+        }
+        else if (saveDst == MapPath())
+        {
+            mapReady = true;
+            mapVersion = DateTime.UtcNow.Ticks.ToString();
+        }
+        saveTask = null;
+    }
+
+    // runs on a worker thread; the file is swapped in whole so sidehud never serves half a png
+    static void WritePng(string path, Color[] px, int w, int h, SKAlphaType alpha)
+    {
+        byte[] bytes = MemoryMarshal.AsBytes(px.AsSpan()).ToArray();
+        using var image = SKImage.FromPixelCopy(new SKImageInfo(w, h, SKColorType.Rgba8888, alpha), bytes) ?? throw new IOException("could not build image");
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string tmp = path + ".tmp";
+        using (var file = File.Create(tmp)) data.SaveTo(file);
+        File.Move(tmp, path, true);
+    }
+
+    // one picture per kind of character, written on first sight; null until the file is on disk
+    string? Icon(string key, Func<(Color[] px, int w, int h)> grab)
+    {
+        if (!config.SendIcons) return null;
+        if (icons.TryGetValue(key, out string? rel)) return rel;
+        icons[key] = null;
+        var (px, w, h) = grab();
+        string path = Path.Combine(mapsDir, "icons", key + ".png");
+        Task.Run(() => WritePng(path, px, w, h, SKAlphaType.Premul))
+            .ContinueWith(t => { if (t.IsCompletedSuccessfully) iconsDone.Enqueue(key); });
+        return null;
+    }
+
+    static (Color[], int, int) Crop(Texture2D texture, Rectangle rect, Color tint)
+    {
+        rect = Rectangle.Intersect(rect, texture.Bounds);
+        var px = new Color[rect.Width * rect.Height];
+        texture.GetData(0, rect, px, 0, px.Length);
+        if (tint != Color.White)
+            for (int i = 0; i < px.Length; i++)
+                px[i] = new Color(px[i].R * tint.R / 255, px[i].G * tint.G / 255, px[i].B * tint.B / 255, px[i].A);
+        return (px, rect.Width, rect.Height);
+    }
+
+    // the head the game shows on its own map page
+    static (Color[], int, int) Portrait(Farmer f)
+    {
+        var device = Game1.graphics.GraphicsDevice;
+        using var target = new RenderTarget2D(device, 36, 36);
+        device.SetRenderTarget(target);
+        try
+        {
+            device.Clear(Color.Transparent);
+            Game1.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
+            try { f.FarmerRenderer.drawMiniPortrat(Game1.spriteBatch, new Vector2(2, 2), 0f, 2f, 2, f); }
+            finally { Game1.spriteBatch.End(); }
+        }
+        finally { device.SetRenderTarget(null); }
+        var px = new Color[36 * 36];
+        target.GetData(px);
+        return (px, 36, 36);
+    }
+
+    static string TextureKey(AnimatedSprite sprite, string fallback) =>
+        Clean(string.IsNullOrEmpty(sprite.Texture?.Name) ? fallback : sprite.Texture.Name);
+
+    // exports copied by 0.2.0 while the game still held the file stayed in its Screenshots folder
     void RemoveLeftovers()
     {
         foreach (string f in Directory.GetFiles(Game1.game1.GetScreenshotFolder(false), "sidehud_*.png"))
             if (DateTime.UtcNow - File.GetLastWriteTimeUtc(f) > TimeSpan.FromMinutes(1))
                 File.Delete(f);
-    }
-
-    static bool PngComplete(string path)
-    {
-        using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (f.Length < 12) return false;
-        f.Seek(-8, SeekOrigin.End);
-        var tail = new byte[4];
-        return f.Read(tail, 0, 4) == 4 && tail[0] == (byte)'I' && tail[1] == (byte)'E' && tail[2] == (byte)'N' && tail[3] == (byte)'D';
     }
 
     void Send()
@@ -203,7 +339,7 @@ public class ModEntry : Mod
         {
             id = "stardew/" + mapId,
             name = loc.DisplayName,
-            image = mapReady ? $"stardew/{saveId}/{mapId}.png?v={mapVersion}" : null,
+            image = mapReady ? $"stardew/{saveId}/{mapFile}.png?v={mapVersion}" : null,
             origin_px = mapOrigin,
             px_per_unit = new[] { px, px },
         });
@@ -224,12 +360,12 @@ public class ModEntry : Mod
     {
         var list = new List<object>();
         var me = Game1.player;
-        Guard("player", () => list.Add(new { id = "player", kind = "player", x = Tile(me.StandingPixel.X), y = Tile(me.StandingPixel.Y), heading = me.FacingDirection * 90, label = me.Name }));
+        Guard("player", () => list.Add(new { id = "player", kind = "player", x = Tile(me.StandingPixel.X), y = Tile(me.StandingPixel.Y), heading = me.FacingDirection * 90, label = me.Name, icon = Icon("farmer_" + me.UniqueMultiplayerID, () => Portrait(me)) }));
         Guard("farmers", () =>
         {
             foreach (Farmer f in loc.farmers)
                 if (!f.IsLocalPlayer)
-                    list.Add(new { id = "farmer:" + f.UniqueMultiplayerID, kind = "ally", x = Tile(f.StandingPixel.X), y = Tile(f.StandingPixel.Y), label = f.Name });
+                    list.Add(new { id = "farmer:" + f.UniqueMultiplayerID, kind = "ally", x = Tile(f.StandingPixel.X), y = Tile(f.StandingPixel.Y), label = f.Name, icon = Icon("farmer_" + f.UniqueMultiplayerID, () => Portrait(f)) });
         });
         Guard("npcs", () =>
         {
@@ -240,10 +376,17 @@ public class ModEntry : Mod
                 if (npc is Monster m)
                 {
                     if (config.SendMonsters)
-                        list.Add(new { id = "monster:" + monsters++, kind = "other", x = Tile(m.StandingPixel.X), y = Tile(m.StandingPixel.Y), label = Label(m) });
+                    {
+                        // slimes share one grey texture and get their colour at draw time
+                        Color tint = m is GreenSlime slime ? slime.color.Value : Color.White;
+                        string key = TextureKey(m.Sprite, m.Name) + (tint == Color.White ? "" : "_" + tint.PackedValue.ToString("x8"));
+                        list.Add(new { id = "monster:" + monsters++, kind = "other", x = Tile(m.StandingPixel.X), y = Tile(m.StandingPixel.Y), label = Label(m),
+                            icon = Icon(key, () => Crop(m.Sprite.Texture, new Rectangle(0, 0, m.Sprite.SpriteWidth, m.Sprite.SpriteHeight), tint)) });
+                    }
                 }
                 else if (config.SendNpcs && npc.IsVillager && !npc.IsInvisible)
-                    list.Add(new { id = "npc:" + npc.Name, kind = "ally", x = Tile(npc.StandingPixel.X), y = Tile(npc.StandingPixel.Y), label = Label(npc) });
+                    list.Add(new { id = "npc:" + npc.Name, kind = "ally", x = Tile(npc.StandingPixel.X), y = Tile(npc.StandingPixel.Y), label = Label(npc),
+                        icon = Icon(TextureKey(npc.Sprite, npc.Name), () => Crop(npc.Sprite.Texture, npc.getMugShotSourceRect(), Color.White)) });
             }
         });
         return list;

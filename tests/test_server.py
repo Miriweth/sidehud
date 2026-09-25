@@ -82,6 +82,20 @@ class Http(unittest.TestCase):
         self.assertEqual(ctype, "image/png")
         self.assertEqual(body, b"\x89PNG fake")
 
+    def test_entity_icons_resolved(self):
+        app = server.App(dict(config.DEFAULTS, maps_dir=self.tmp.name, map_port=0))
+        try:
+            app.state.update({"entities": [
+                {"id": "a", "x": 1, "y": 1, "icon": "stardew/icons/a.png?v=1"},
+                {"id": "b", "x": 1, "y": 1, "icon": "https://example.org/b.png"},
+                {"id": "c", "x": 1, "y": 1, "icon": 5},
+                {"id": "d", "x": 1, "y": 1},
+            ]})
+            icons = {e["id"]: e.get("icon", "missing") for e in app.map_snapshot()["entities"]}
+        finally:
+            app.udp.sock.close()
+        self.assertEqual(icons, {"a": "/maps/stardew/icons/a.png?v=1", "b": "https://example.org/b.png", "c": None, "d": "missing"})
+
     def test_games_list(self):
         status, ctype, body = self.get("/api/games")
         self.assertEqual(status, 200)

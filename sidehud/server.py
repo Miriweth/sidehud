@@ -32,6 +32,7 @@ class App:
             snap["map"] = self.maps.get(snap["map"])
         elif isinstance(snap["map"], dict):
             snap["map"] = dict(snap["map"], image=image_url(snap["map"].get("image")))
+        snap["entities"] = [dict(e, icon=image_url(e["icon"])) if "icon" in e else e for e in snap["entities"]]
         return snap
 
 

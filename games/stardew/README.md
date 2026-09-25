@@ -1,8 +1,8 @@
 # Stardew Valley
 
-SidehudBridge is a SMAPI mod. While a save is loaded it sends the local
-player's position, the other farmers, villagers and monsters in the same
-location and the day's numbers (clock, date, weather, money, energy, health,
+SidehudBridge is a SMAPI mod. While a save is loaded it sends a live map of
+the location you are in, the local player's position, the other farmers,
+villagers and monsters there with an icon each, and the day's numbers (clock, date, weather, money, energy, health,
 luck, skills, today's birthday and festival) to sidehud over UDP, ten times a
 second. Nothing is sent on the title screen. sidehud shows the map tile and the
 Stardew panel while packets arrive and hides them when the game stops.
@@ -38,25 +38,28 @@ The Windows build of the game running under Proton works too, the mod resolves
 - `Host`, `Port`: where sidehud listens, `127.0.0.1` and `8766`
 - `SendsPerSecond`: 10
 - `MapsDir`: `$XDG_CONFIG_HOME/sidehud/maps/stardew`; `~` and `$XDG_CONFIG_HOME` (`~/.config` when unset) are expanded
-- `MapScale`: 0.25, size of the exported map images, 16 px per tile
+- `MapScale`: 0.25, size of the map images, 16 px per tile
+- `MapRefreshSeconds`: 10, how often the map of your location is drawn again; 0 draws it only when you arrive
 - `SendNpcs`, `SendMonsters`: villagers and monsters as markers
+- `SendIcons`: pictures of the characters for the markers
 - `ExportMaps`: false leaves the tile on the grid
-- `MapRefresh`: `daily` renders a location again on its first visit each in-game day, `once` only when the image is missing, `always` on every visit
 
 ## Maps
 
-When you enter a location the mod renders it with the game's own map
-screenshot, the same as the `/mapscreenshot` chat command, at `MapScale`. The
-game draws the picture itself, so map mods, buildings and the season are in
-it. Farmers, villagers and monsters are left out, the markers show them. The
-image goes to `MapsDir/<save>/<location>.png`, one folder per save. With the
-default `MapRefresh` each location is rendered again on its first visit of the
-day, so a new building shows up the next day at the latest. The game stalls for
-a moment while it renders. The packet carries the image path, so there is no
-`.toml` to write.
+The mod draws the map of your location from the running game, one piece of
+2048 pixels per frame, the same way the game's `/mapscreenshot` command does
+it but spread out, so the game does not stall. It draws the map again every
+`MapRefreshSeconds`, which keeps crops, machines and new buildings current,
+and map mods show up because the game draws them. Farmers, villagers and
+monsters are left out of the picture, the markers show them. Images go to
+`MapsDir/<save>/<location>.png`, one folder per save. The mines, Skull Cavern
+and the volcano dungeon share one file per save, a level looks different on
+every visit anyway.
 
-The mines, Skull Cavern and the volcano are not exported, their layout changes
-every visit; the tile shows a grid there.
+The icons are cut from the game's sprites the first time a character shows
+up: villagers get the head from the social page, monsters their first
+animation frame, farmers the small portrait from the map page. They are stored
+in `MapsDir/icons`.
 
 ## What is sent
 

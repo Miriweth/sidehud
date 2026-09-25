@@ -226,7 +226,7 @@
 
   // ---- minimap ----------------------------------------------------------
   const MARKER = { player: { color: COLORS.ink, r: 7 }, ally: { color: COLORS.mem, r: 5 }, other: { color: COLORS.net, r: 4 } };
-  const map = { canvas: $('map-canvas'), img: null, imgSrc: null, mode: 0, last: null };
+  const map = { canvas: $('map-canvas'), img: null, imgSrc: null, icons: {}, mode: 0, last: null };
   const MODES = [{ follow: true, zoom: 2 }, { follow: true, zoom: 4 }, { follow: false, zoom: 1 }];
 
   function drawMap(data) {
@@ -242,15 +242,17 @@
     const def = data.map || {};
     const src = def.image || null;
     if (map.imgSrc !== src) {
+      // a new ?v= is the same place drawn again: keep the old picture until the new one is there
+      const base = u => u && u.split('?')[0];
+      if (base(src) !== base(map.imgSrc)) map.img = null;
       map.imgSrc = src;
-      map.img = null;
       if (src) {
-        map.img = new Image();
-        map.img.onload = () => { if (map.last) drawMap(map.last); };
-        map.img.src = src;
+        const next = new Image();
+        next.onload = () => { if (map.imgSrc === src) { map.img = next; if (map.last) drawMap(map.last); } };
+        next.src = src;
       }
     }
-    const img = map.img && map.img.complete && map.img.naturalWidth ? map.img : null;
+    const img = map.img && map.img.naturalWidth ? map.img : null;
     const [ox, oy] = def.origin_px || [0, 0];
     const [sx, sy] = def.px_per_unit || [1, -1];
     const toPx = e => [ox + e.x * sx, oy + e.y * sy];
@@ -289,21 +291,45 @@
 
     ctx.font = '12px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    for (const e of ents) {
+    ctx.imageSmoothingEnabled = false;
+    // the player last, so it stays on top
+    for (const e of [...ents].sort((a, b) => (a.kind === 'player') - (b.kind === 'player'))) {
       const [px, py] = toPx(e);
       const X = tx + px * s, Y = ty + py * s;
       const m = MARKER[e.kind] || MARKER.other;
-      ctx.beginPath(); ctx.arc(X, Y, m.r, 0, Math.PI * 2);
-      ctx.fillStyle = m.color; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = SURFACE; ctx.stroke();
+      const pic = e.icon ? iconImage(e.icon) : null;
+      let r = m.r;
+      ctx.beginPath();
+      if (pic) {
+        const ih = e.kind === 'player' ? 30 : 24, iw = ih * pic.naturalWidth / pic.naturalHeight;
+        r = Math.max(ih, iw) / 2 + 3;
+        ctx.arc(X, Y, r, 0, Math.PI * 2);
+        ctx.fillStyle = SURFACE; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = m.color; ctx.stroke();
+        ctx.drawImage(pic, X - iw / 2, Y - ih / 2, iw, ih);
+      } else {
+        ctx.arc(X, Y, r, 0, Math.PI * 2);
+        ctx.fillStyle = m.color; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = SURFACE; ctx.stroke();
+      }
       if (e.heading != null) {
-        const a = (e.heading - 90) * Math.PI / 180;
-        ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + Math.cos(a) * (m.r + 10), Y + Math.sin(a) * (m.r + 10));
+        const a = (e.heading - 90) * Math.PI / 180, c = Math.cos(a), n = Math.sin(a);
+        ctx.beginPath(); ctx.moveTo(X + c * (pic ? r : 0), Y + n * (pic ? r : 0)); ctx.lineTo(X + c * (r + 8), Y + n * (r + 8));
         ctx.lineWidth = 3; ctx.strokeStyle = m.color; ctx.stroke();
       }
-      if (e.label) { ctx.fillStyle = COLORS.ink; ctx.fillText(e.label, X + m.r + 6, Y); }
+      if (e.label) { ctx.fillStyle = COLORS.ink; ctx.fillText(e.label, X + r + 6, Y); }
     }
     $('map-sub').textContent = [def.name || def.id || data.source, mode.follow ? t('mapFollow', { z: mode.zoom }) : t('mapFull')].filter(Boolean).join(' · ');
+  }
+
+  function iconImage(url) {
+    let pic = map.icons[url];
+    if (!pic) {
+      pic = map.icons[url] = new Image();
+      pic.onload = () => { if (map.last) drawMap(map.last); };
+      pic.src = url;
+    }
+    return pic.complete && pic.naturalWidth ? pic : null;
   }
 
   map.canvas.addEventListener('click', () => { map.mode = (map.mode + 1) % MODES.length; if (map.last) drawMap(map.last); });

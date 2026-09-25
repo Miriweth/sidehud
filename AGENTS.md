@@ -79,15 +79,18 @@ competitive online play. `docs/plugin-spec.md` has the details.
 - Stardew Valley runs through Proton here, so the mod is a Windows .NET
   process under Wine. The mod maps `/` paths to `Z:` and finds the home folder
   through `WINEHOMEDIR` (`Expand` and `Home` in `ModEntry.cs`).
-- `Game1.takeMapScreenshot` writes the PNG through a `FileStream` opened with
-  `OpenOrCreate` that it never closes. The file is complete and unlocked only
-  after the GC finalized that stream, and a reused file name keeps stale bytes
-  behind a shorter image. The mod uses a new name for every export and waits
-  for the `IEND` chunk before it copies the file.
-- The map screenshot draws the current frame with every character in it. The
-  mod hides them with a Harmony postfix on `shouldHideCharacters` while its
-  own export runs; `BusStop` and `Desert` override that method and are patched
+- The live map calls `Game1._draw` (protected) through SMAPI's reflection
+  helper, one 2048 pixel chunk per tick, with `takingMapScreenshot` set and the
+  lightmap swapped for one of chunk size. That mirrors `Game1.takeMapScreenshot`,
+  which draws all chunks in one call and stalls the game. The game's method also
+  writes its PNG through a `FileStream` it never closes, so the mod does not
+  use it.
+- While a chunk is drawn, a Harmony postfix on `shouldHideCharacters` hides
+  farmers and NPCs; `BusStop` and `Desert` override that method and are patched
   as well.
+- PNGs are encoded with the game's SkiaSharp on a worker thread, written under
+  a temporary name and renamed. A new `?v=` in the image path tells the page to
+  load the new picture.
 - Location names repeat across saves, so map images live in
   `maps/stardew/<save folder>/`.
 - SMAPI loads mods only at game start. After `build.sh` the game has to be
