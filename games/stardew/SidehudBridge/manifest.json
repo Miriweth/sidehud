@@ -1,7 +1,7 @@
 {
   "Name": "SidehudBridge",
   "Author": "miriweth",
-  "Version": "0.1.0",
+  "Version": "0.2.0",
   "Description": "Sends position, map and day stats to sidehud over UDP.",
   "UniqueID": "miriweth.SidehudBridge",
   "EntryDll": "SidehudBridge.dll",
