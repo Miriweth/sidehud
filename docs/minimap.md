@@ -20,11 +20,15 @@ One JSON object per UDP datagram:
 }
 ```
 
-- `map`: id of a map definition (below). Leave it out and you get a plain grid.
+- `map`: id of a map definition (below), or the definition itself as an object
+  with the same keys. Leave it out or send `null` and you get a plain grid with
+  y pointing up; a definition without `image` gives the grid with its own
+  `px_per_unit`, which matters when the game counts y downwards.
 - `entities`: each needs `x` and `y` in world units. `id` keeps a marker stable
   from packet to packet, `kind` is `player`, `ally` or `other`, `heading` is in
   degrees clockwise with 0 pointing up, `label` is drawn next to the marker.
 - Short form for a single player: `{"map": "castle", "x": 1, "y": 2, "heading": 0}`
+- `game` and `stats` add a panel for that game, see [games/README.md](../games/README.md).
 
 Send at least one packet every 3 seconds, otherwise the tile hides itself.
 10 per second gives smooth movement. A marker that is no longer sent disappears

@@ -5,3 +5,5 @@ build/
 dist/
 .venv/
 .claude/
+bin/
+obj/

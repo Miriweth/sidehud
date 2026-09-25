@@ -5,7 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
-from .maps.defs import MapDefs
+from .maps.defs import MapDefs, image_url
 from .maps.state import MapState
 from .maps.udp import UdpListener
 from .sampler import Sampler
@@ -30,6 +30,8 @@ class App:
         snap = self.state.snapshot()
         if isinstance(snap["map"], str):
             snap["map"] = self.maps.get(snap["map"])
+        elif isinstance(snap["map"], dict):
+            snap["map"] = dict(snap["map"], image=image_url(snap["map"].get("image")))
         return snap
 
 
@@ -45,6 +47,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(self.app.sampler.get())
         elif path == "/api/map":
             self.send_json(self.app.map_snapshot())
+        elif path == "/api/games":
+            self.send_json(sorted(f.stem for f in (STATIC / "games").glob("*.js")))
         elif path.startswith("/maps/"):
             self.send_map_file(path[len("/maps/"):])
         else:
@@ -73,7 +77,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def end_headers(self):
-        if self.path == "/" or self.path.endswith((".html", ".js", ".css")):
+        path = self.path.split("?", 1)[0]
+        if path == "/" or path.endswith((".html", ".js", ".css")):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 

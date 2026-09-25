@@ -30,4 +30,4 @@ sidehud = "sidehud.cli:main"
 include = ["sidehud*"]
 
 [tool.setuptools.package-data]
-sidehud = ["static/*"]
+sidehud = ["static/*", "static/games/*"]

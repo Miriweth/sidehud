@@ -17,7 +17,8 @@ body{
 header{display:flex;align-items:baseline;gap:10px;padding:2px 2px 12px}
 header .brand{font-weight:600}
 header .host{color:var(--muted);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-header .clock{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+header .profile{margin-left:auto;font:inherit;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:2px 6px;max-width:40%}
+header .clock{font-variant-numeric:tabular-nums;color:var(--ink-2)}
 header .conn{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
 header .conn::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
 body.online header .conn::before{background:var(--good)}
@@ -53,6 +54,10 @@ body.offline main{opacity:.55}
 .procs .bar{grid-column:1/-1;height:3px;border-radius:2px;background:var(--cpu)}
 .map{grid-column:1/-1}
 .map canvas{display:block;width:100%;aspect-ratio:1/1;margin-top:8px;border-radius:8px;background:#111;touch-action:none}
+.game{grid-column:1/-1}
+.game .body{min-width:0}
+.game .meter{margin-top:0}
+.game .event{color:var(--ink-2)}
 footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
 .l-only{display:none}
 .hidden{display:none!important}
@@ -60,15 +65,15 @@ footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
 /* phone in landscape: everything on one screen, no scrolling */
 @media (orientation: landscape) and (max-height: 520px) {
   body{
-    min-height:100dvh;display:flex;flex-direction:column;
+    height:100dvh;display:flex;flex-direction:column;
     padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 8px)
             calc(env(safe-area-inset-bottom,0px) + 6px) calc(env(safe-area-inset-left,0px) + 8px);
   }
   header{padding:0 2px 6px;font-size:14px}
   main{
-    flex:1;gap:8px;
+    flex:1;min-height:0;gap:8px;
     grid-template-columns:1.15fr 1fr 1fr .95fr;
-    grid-template-rows:1fr 1fr;
+    grid-template-rows:minmax(0,1fr) minmax(0,1fr);
     grid-template-areas:"hero gpu cpu procs" "hero mem net procs";
   }
   body.has-map main{
@@ -76,9 +81,16 @@ footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
     grid-template-areas:"map hero gpu" "map cpu mem";
   }
   body.has-map #net,body.has-map #procs{display:none}
-  .tile{padding:8px 12px 8px;border-radius:12px;display:flex;flex-direction:column}
-  .tile.hero{grid-area:hero;grid-column:auto}
-  .tile.map{grid-area:map;grid-column:auto}
+  body.has-game main{
+    grid-template-columns:1.5fr 1fr 1fr;
+    grid-template-areas:"map game hero" "map game gpu";
+  }
+  body.has-game #cpu,body.has-game #mem{display:none}
+  .tile{padding:8px 12px 8px;border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .tile.hero{grid-area:hero}
+  .tile.map{grid-area:map}
+  .tile.game{grid-area:game}
+  .game .body{flex:1;min-height:0;overflow:hidden}
   #gpu{grid-area:gpu} #cpu{grid-area:cpu} #mem{grid-area:mem} #net{grid-area:net} #procs{grid-area:procs}
   .map canvas{aspect-ratio:auto;flex:1;min-height:0;margin-top:6px}
   .label{font-size:12px}

@@ -16,6 +16,7 @@
 <body>
 <header>
   <span class="brand">sidehud</span><span class="host" id="host"></span>
+  <select class="profile" id="profile" aria-label="profile"></select>
   <span class="clock" id="clock">--:--:--</span>
   <span class="conn" id="conn"></span>
 </header>
@@ -30,6 +31,11 @@
   <section class="tile map hidden" id="map">
     <div class="label"><span data-i18n="map"></span><span class="sub" id="map-sub"></span></div>
     <canvas id="map-canvas"></canvas>
+  </section>
+
+  <section class="tile game hidden" id="game">
+    <div class="label"><span id="game-title"></span><span class="sub" id="game-sub"></span></div>
+    <div class="body" id="game-body"></div>
   </section>
 
   <section class="tile" id="gpu">

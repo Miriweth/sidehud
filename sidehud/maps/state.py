@@ -9,6 +9,8 @@ class MapState:
         self._lock = threading.Lock()
         self._ttl = ttl
         self._map = None
+        self._game = None
+        self._stats = None
         self._entities = {}
         self._source = None
         self._updated = 0.0
@@ -21,8 +23,12 @@ class MapState:
         if entities is None and "x" in msg:
             entities = [{k: msg[k] for k in ("id", "kind", "x", "y", "z", "heading", "label") if k in msg}]
         with self._lock:
-            if "map" in msg:
+            if "map" in msg and isinstance(msg["map"], (str, dict, type(None))):
                 self._map = msg["map"]
+            game = msg.get("game")
+            self._game = game if isinstance(game, str) else None
+            stats = msg.get("stats")
+            self._stats = stats if isinstance(stats, dict) else None
             for e in entities or []:
                 if not isinstance(e, dict) or "x" not in e or "y" not in e:
                     continue
@@ -44,6 +50,8 @@ class MapState:
                 "live": age is not None and age <= self._ttl,
                 "age": None if age is None else round(age, 1),
                 "map": self._map,
+                "game": self._game,
+                "stats": self._stats,
                 "source": self._source,
                 "entities": [dict(e) for e in keep.values()],
             }

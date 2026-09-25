@@ -22,6 +22,26 @@ class State(unittest.TestCase):
         ids = sorted(e["id"] for e in s.snapshot()["entities"])
         self.assertEqual(ids, ["bob", "player"])
 
+    def test_game_and_stats(self):
+        s = MapState()
+        s.update({"x": 0, "y": 0})
+        snap = s.snapshot()
+        self.assertIsNone(snap["game"])
+        self.assertIsNone(snap["stats"])
+        s.update({"game": "stardew", "stats": {"day": 12, "money": 500}, "x": 0, "y": 0})
+        snap = s.snapshot()
+        self.assertEqual(snap["game"], "stardew")
+        self.assertEqual(snap["stats"]["money"], 500)
+        s.update({"game": 7, "stats": "no", "x": 1, "y": 1})
+        snap = s.snapshot()
+        self.assertIsNone(snap["game"])
+        self.assertIsNone(snap["stats"])
+        s.update({"game": "stardew", "stats": {"day": 12}, "x": 0, "y": 0})
+        s.update({"x": 1, "y": 1})
+        snap = s.snapshot()
+        self.assertIsNone(snap["game"])
+        self.assertIsNone(snap["stats"])
+
     def test_goes_stale(self):
         s = MapState(ttl=0.05)
         s.update({"x": 0, "y": 0})

@@ -86,6 +86,13 @@ python examples/sender.py
 
 The map tile appears when data arrives and disappears when it stops.
 
+### Games
+
+A packet can also carry a `game` id and a `stats` object; sidehud then loads a
+panel for that game next to the map. Stardew Valley is the first one, see
+[games/README.md](games/README.md) for adding another game.
+`python examples/stardew_fake.py` shows the panel without the game.
+
 sidehud only draws what a game or mod hands over. It does not read game memory,
 and nothing here is meant for online games.
 

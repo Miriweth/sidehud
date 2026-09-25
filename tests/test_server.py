@@ -16,6 +16,7 @@ class Http(unittest.TestCase):
         cfg = config.load(Path(cls.tmp.name) / "none.toml")
         cfg["maps_dir"] = cls.tmp.name
         cfg["map_port"] = 0
+        cls.cfg = cfg
         (Path(cls.tmp.name) / "demo.png").write_bytes(b"\x89PNG fake")
         app = server.App(cfg)
         app.state.update({"map": "demo", "x": 1, "y": 1})
@@ -48,10 +49,43 @@ class Http(unittest.TestCase):
         status, ctype, body = self.get("/api/map")
         self.assertIn(b'"image": "/maps/demo.png"', body)
 
+    def test_inline_map_image(self):
+        app = server.App(self.cfg)
+        for image, want in [("stardew/Farm.png", "/maps/stardew/Farm.png"), ("/x.png", "/x.png"),
+                            ("http://h/x.png", "http://h/x.png"), (None, None)]:
+            app.state.update({"map": {"id": "stardew/Farm", "image": image, "px_per_unit": [16, 16]},
+                              "game": "stardew", "stats": {"day": 1}, "x": 1, "y": 1})
+            snap = app.map_snapshot()
+            self.assertEqual(snap["map"]["image"], want)
+            self.assertEqual(snap["map"]["px_per_unit"], [16, 16])
+            self.assertEqual(snap["game"], "stardew")
+            self.assertEqual(snap["stats"], {"day": 1})
+        app.state.update({"map": None, "x": 1, "y": 1})
+        self.assertIsNone(app.map_snapshot()["map"])
+        app.udp.sock.close()
+
+    def test_inline_map_bad_image(self):
+        app = server.Handler.app
+        try:
+            app.state.update({"map": {"image": 5}, "x": 1, "y": 1})
+            self.assertIsNone(app.map_snapshot()["map"]["image"])
+            status, ctype, body = self.get("/api/map")
+            self.assertEqual(status, 200)
+            self.assertIn(b'"image": null', body)
+            app.state.update({"map": 5, "x": 1, "y": 1})
+            self.assertEqual(app.map_snapshot()["map"], {"image": None})
+        finally:
+            app.state.update({"map": "demo", "x": 1, "y": 1})
+
     def test_map_file(self):
         status, ctype, body = self.get("/maps/demo.png")
         self.assertEqual(ctype, "image/png")
         self.assertEqual(body, b"\x89PNG fake")
+
+    def test_games_list(self):
+        status, ctype, body = self.get("/api/games")
+        self.assertEqual(status, 200)
+        self.assertIn(b'"stardew"', body)
 
     def test_no_path_traversal(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:

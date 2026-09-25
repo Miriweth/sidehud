@@ -10,6 +10,7 @@
       procs: 'Top processes', procsSub: 'CPU like in top, 100 % = one thread', quiet: 'all quiet',
       warm: 'warm', hot: 'hot', full: 'full', ago: '{n} s ago', now: 'now',
       map: 'Map', mapFollow: 'follow ×{z}', mapFull: 'whole map',
+      profileAuto: 'Auto', profilePc: 'PC only',
       hint: 'In Safari: Share, then "Add to Home Screen" for fullscreen. Set Auto-Lock to Never while it runs.',
     },
     de: {
@@ -22,6 +23,7 @@
       procs: 'Top-Prozesse', procsSub: 'CPU wie in top, 100 % = ein Thread', quiet: 'alles ruhig',
       warm: 'warm', hot: 'heiß', full: 'voll', ago: 'vor {n} s', now: 'jetzt',
       map: 'Karte', mapFollow: 'folgen ×{z}', mapFull: 'ganze Karte',
+      profileAuto: 'Automatisch', profilePc: 'Nur PC',
       hint: 'In Safari: Teilen, dann „Zum Home-Bildschirm“ für Vollbild. Automatische Sperre auf „Nie“ stellen, solange es läuft.',
     },
   };
@@ -238,11 +240,15 @@
     ctx.clearRect(0, 0, w, h);
 
     const def = data.map || {};
-    if (def.image && map.imgSrc !== def.image) {
-      map.imgSrc = def.image;
-      map.img = new Image();
-      map.img.onload = () => { if (map.last) drawMap(map.last); };
-      map.img.src = def.image;
+    const src = def.image || null;
+    if (map.imgSrc !== src) {
+      map.imgSrc = src;
+      map.img = null;
+      if (src) {
+        map.img = new Image();
+        map.img.onload = () => { if (map.last) drawMap(map.last); };
+        map.img.src = src;
+      }
     }
     const img = map.img && map.img.complete && map.img.naturalWidth ? map.img : null;
     const [ox, oy] = def.origin_px || [0, 0];
@@ -302,25 +308,77 @@
 
   map.canvas.addEventListener('click', () => { map.mode = (map.mode + 1) % MODES.length; if (map.last) drawMap(map.last); });
 
+  // ---- game panels ------------------------------------------------------
+  // games/<id>.js exports { title, render(stats, root, ctx) }, see games/README.md
+  const games = {};
+  const GAME_CTX = { t, f0, f1, locale, lang: LANG };
+
+  function gameModule(id) {
+    if (!/^[a-z0-9_-]+$/i.test(id)) return Promise.resolve(null);
+    if (!games[id]) games[id] = import(`./games/${id}.js`).then(m => m.default, () => null);
+    return games[id];
+  }
+
+  function renderGame(mod, stats) {
+    $('game-title').textContent = mod.title;
+    let out;
+    try { out = mod.render(stats || {}, $('game-body'), GAME_CTX); } catch (e) { console.error('game panel', e); }
+    $('game-sub').textContent = (out && out.sub) || '';
+  }
+
+  // returns true when the tile was shown or hidden; the grid changes then and sparklines need a redraw
+  function showTile(id, cls, show) {
+    const tile = $(id);
+    if (tile.classList.contains('hidden') !== show) return false;
+    tile.classList.toggle('hidden', !show);
+    document.body.classList.toggle(cls, show);
+    return true;
+  }
+
+  // profile: auto = whatever sends data, pc = never show game tiles, <game> = pin that panel
+  const PROFILE_KEY = 'sidehud.profile';
+  let profile = 'auto', mapData = null;
+  try { profile = localStorage.getItem(PROFILE_KEY) || 'auto'; } catch (e) { /* private mode */ }
+
+  async function applyMap(data) {
+    const live = data.live && profile !== 'pc';
+    const gameId = profile === 'auto' || profile === 'pc' ? (live && data.game) : profile;
+    const mod = gameId ? await gameModule(gameId) : null;
+    let changed = showTile('map', 'has-map', live);
+    changed = showTile('game', 'has-game', !!mod) || changed;
+    if (changed && lastSnap) render(lastSnap);
+    if (mod) renderGame(mod, live && data.game === gameId ? data.stats : null);
+    if (live) drawMap(data);
+    return live;
+  }
+
   async function pollMap() {
     let delay = 1000;
     try {
       const r = await fetch('/api/map', { cache: 'no-store' });
-      const data = await r.json();
-      if (data.live) {
-        const wasHidden = $('map').classList.contains('hidden');
-        $('map').classList.remove('hidden');
-        document.body.classList.add('has-map');
-        if (wasHidden && lastSnap) render(lastSnap);
-        drawMap(data);
-        delay = 100;
-      } else if (!$('map').classList.contains('hidden')) {
-        $('map').classList.add('hidden');
-        document.body.classList.remove('has-map');
-        if (lastSnap) render(lastSnap);
-      }
+      mapData = await r.json();
+      if (await applyMap(mapData)) delay = 100;
     } catch (e) { /* server away, stats poller reports it */ }
     setTimeout(pollMap, delay);
+  }
+
+  async function buildProfiles() {
+    const sel = $('profile');
+    const add = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; sel.appendChild(o); };
+    add('auto', t('profileAuto'));
+    add('pc', t('profilePc'));
+    let ids = [];
+    try { ids = await (await fetch('/api/games', { cache: 'no-store' })).json(); } catch (e) { /* offline */ }
+    for (const id of ids) {
+      const mod = await gameModule(id);
+      if (mod) add(id, mod.title || id);
+    }
+    sel.value = [...sel.options].some(o => o.value === profile) ? profile : 'auto';
+    sel.addEventListener('change', () => {
+      profile = sel.value;
+      try { localStorage.setItem(PROFILE_KEY, profile); } catch (e) { /* private mode */ }
+      if (mapData) applyMap(mapData);
+    });
   }
 
   // ---- start ------------------------------------------------------------
@@ -334,5 +392,6 @@
   window.addEventListener('resize', () => { if (lastSnap) render(lastSnap); if (map.last) drawMap(map.last); });
   tick();
   setInterval(tick, 1000);
+  buildProfiles();
   pollMap();
 })();

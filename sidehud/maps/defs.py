@@ -2,6 +2,13 @@ import tomllib
 from pathlib import Path
 
 
+def image_url(image):
+    """Relative image names live in the maps dir and are served under /maps/."""
+    if isinstance(image, str) and image and "://" not in image and not image.startswith("/"):
+        return "/maps/" + image
+    return image if isinstance(image, str) else None
+
+
 class MapDefs:
     """<maps_dir>/<id>.toml describes a map image and how world units map to pixels."""
 
@@ -23,7 +30,6 @@ class MapDefs:
         with open(path, "rb") as f:
             d = tomllib.load(f)
         d["id"] = map_id
-        if d.get("image") and "://" not in d["image"] and not d["image"].startswith("/"):
-            d["image"] = "/maps/" + d["image"]
+        d["image"] = image_url(d.get("image"))
         self._cache[map_id] = (mtime, d)
         return d
