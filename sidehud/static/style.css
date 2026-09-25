@@ -53,7 +53,7 @@ body.offline main{opacity:.55}
 .procs .n{font-variant-numeric:tabular-nums;color:var(--ink-2)}
 .procs .bar{grid-column:1/-1;height:3px;border-radius:2px;background:var(--cpu)}
 .map{grid-column:1/-1}
-.map canvas{display:block;width:100%;aspect-ratio:1/1;margin-top:8px;border-radius:8px;background:#111;touch-action:none}
+.map canvas{display:block;width:100%;aspect-ratio:1/1;max-height:70vh;margin-top:8px;border-radius:8px;background:#111;touch-action:none}
 .game{grid-column:1/-1}
 .game .body{min-width:0}
 .game .meter{margin-top:0}
@@ -93,7 +93,7 @@ footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
   .tile.game{grid-area:game}
   .game .body{flex:1;min-height:0;overflow:hidden}
   #gpu{grid-area:gpu} #cpu{grid-area:cpu} #mem{grid-area:mem} #net{grid-area:net} #procs{grid-area:procs}
-  .map canvas{aspect-ratio:auto;flex:1;min-height:0;margin-top:6px}
+  .map canvas{aspect-ratio:auto;flex:1;min-height:0;max-height:none;margin-top:6px}
   .label{font-size:12px}
   .value{font-size:30px;margin-top:2px}
   .hero .value{font-size:60px}
@@ -106,4 +106,10 @@ footer{color:var(--muted);font-size:12px;padding:16px 2px 0;text-align:center}
   .spark,.hero .spark{flex:1 1 0;height:auto;min-height:36px;margin-top:4px}
   .procs .row{padding:5px 0 4px;font-size:14px}
   .l-hide{display:none!important}
+}
+
+/* wide windows: the map on the left over two rows instead of a square as wide as the page */
+@media (min-width: 1000px) and (min-height: 521px) {
+  .tile.map{grid-column:span 2;grid-row:span 2}
+  .tile.game{grid-column:auto}
 }
