@@ -102,7 +102,7 @@ around you and the day's numbers. `python examples/stardew_fake.py` shows the
 panel without the game.
 
 sidehud only draws what a sender hands over: a mod, a script on a telemetry
-feed, or a tool that reads the game's memory. Nothing here is meant for online
+feed, a tool that reads the game's memory, or a DLL loaded into the game. Nothing here is meant for online
 games.
 
 ## Configuration

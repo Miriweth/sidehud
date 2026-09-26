@@ -49,11 +49,12 @@ A panel module must:
 ## Where the data may come from
 
 A modding API, a telemetry SDK, a log or save file, an official web API, or
-the game's own memory. A sender may read another process's memory; that is how
-games without any mod support get a minimap. It must not write to that memory
-or inject code into the game. sidehud is for single-player and co-op games and
-has no place in competitive online games or games with anti-cheat, where a
-memory reader gets accounts banned. The `memreader-py` template in
+the game's own memory. A sender may read another process's memory, and it may
+run inside the game as an injected or proxy DLL when that is the only way at
+the data; that is how games without any mod support get a minimap. sidehud is
+for single-player and co-op games and has no place in competitive online games
+or games with anti-cheat, where a memory reader or an injected DLL gets
+accounts banned. The `memreader-py` template in
 [re-env](https://github.com/Miriweth/re-env) is a sender of that kind.
 
 ## How data moves

@@ -70,9 +70,9 @@ with `Cache-Control: no-cache`, a page reload is enough for them.
 ## Rules for game integrations
 
 Data comes from interfaces a game offers for it (modding APIs, telemetry SDKs,
-logs, save files) or from reading the game's memory. Nothing in this repository
-writes to another process's memory, injects code, or touches games with
-anti-cheat or competitive online play. `docs/plugin-spec.md` has the details.
+logs, save files) from reading the game's memory, or from a DLL running inside the
+game. Nothing in this repository touches games with anti-cheat or competitive
+online play. `docs/plugin-spec.md` has the details.
 
 ## Things that are easy to get wrong
 
